@@ -14,16 +14,13 @@ def angle_to_rot(ax, ay, az):
 
 def main():
     # Read images from a video file in the current folder.
-    video_capture = cv2.VideoCapture("input.mp4")     # Open video capture object
+    video_capture = cv2.VideoCapture(0)     # Open video capture object
     got_image, img = video_capture.read()       # Make sure we can read video
     if not got_image:
         print("Cannot read video source")
         sys.exit()
 
     image_height, image_width = img.shape[:2]
-
-    fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-    videoWriter = cv2.VideoWriter("output.mp4", fourcc=fourcc, fps=30.0, frameSize=(image_width, image_height))
 
     # Camera params
     Fx = 675
@@ -44,9 +41,6 @@ def main():
 
     while True:
         got_image, img = video_capture.read()
-        if not got_image:
-            videoWriter.release()
-            sys.exit()
 
         corners, ids, _ = cv2.aruco.detectMarkers(
             image=img,
@@ -70,13 +64,35 @@ def main():
                 rvec=rvec_m_c, tvec=tm_c, length=marker_length
             )
 
+            R_m_p = np.array([[1, 0, 0],
+                              [0, 1, 0],
+                              [0, 0, 1]])
 
-        img_output = img.copy()
-        videoWriter.write(img_output)
-            
-        cv2.imshow("window", img)
+            t_m_p = np.array([[0, 0, 5]]).T
+
+            R_m_c = cv2.Rodrigues(rvec_m_c)[0]
+
+            H_M_C = np.block([[R_m_c, tm_c.T], [0,0,0,1]])
+
+            H_M_P= np.block([[R_m_p, t_m_p], [0,0,0,1]])
+
+            H_P_M = np.linalg.inv(H_M_P)
+
+            H_P_C =  H_M_C @ H_P_M
+
+            Mext = H_P_C[0:3, :]
+
+        cv2.imshow('Window', img)
+
+
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
         cv2.waitKey(30)
+    
+    video_capture.release()
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
