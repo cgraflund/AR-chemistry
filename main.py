@@ -7,10 +7,6 @@ import config
 import itertools
 from sklearn.cluster import DBSCAN
 
-def euc_distance(tvec1, tvec2):
-    # Calculates the euclidean distance between two points.
-    return ((tvec1[0] - tvec2[0])**2 + (tvec1[1] - tvec2[1])**2 + (tvec1[2] - tvec2[2])**2)**0.5
-
 def calc_center(points, rvecs, tvecs):
     # Calculates the center coordinates of a molecule by averaging points.
     t = np.zeros((len(points), 1, 3))
@@ -173,10 +169,10 @@ def main():
                     i += 1
 
             if ids.size > 0:
-                squeezed = np.squeeze(tvecs, axis=1)
+                tag_coordinates = np.squeeze(tvecs, axis=1)
 
                 # Use DBSCAN to mark ArUco tags that are within dist_threshold as one cluster
-                clusters = DBSCAN(eps=config.dist_threshold, min_samples=1).fit(squeezed)
+                clusters = DBSCAN(eps=config.dist_threshold, min_samples=1).fit(tag_coordinates)
                 cluster_labels = clusters.labels_
 
                 # Build the list of molecules based on the clusters from DBSCAN
