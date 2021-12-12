@@ -7,20 +7,12 @@ import config
 import itertools
 from sklearn.cluster import DBSCAN
 
-def angle_to_rot(ax, ay, az):
-    sx, sy, sz = np.sin(ax), np.sin(ay), np.sin(az)
-    cx, cy, cz = np.cos(ax), np.cos(ay), np.cos(az)
-    Rx = np.array(((1, 0, 0), (0, cx, -sx), (0, sx, cx)))
-    Ry = np.array(((cy, 0, sy), (0, 1, 0), (-sy, 0, cy)))
-    Rz = np.array(((cz, -sz, 0), (sz, cz, 0), (0, 0, 1)))
-    # Apply X rotation first, then Y, then Z
-    return Rz @ Ry @ Rx
-
 def euc_distance(tvec1, tvec2):
+    # Calculates the euclidean distance between two points.
     return ((tvec1[0] - tvec2[0])**2 + (tvec1[1] - tvec2[1])**2 + (tvec1[2] - tvec2[2])**2)**0.5
 
 def calc_center(points, rvecs, tvecs):
-
+    # Calculates the center coordinates of a molecule by averaging points.
     t = np.zeros((len(points), 1, 3))
     r = np.zeros((len(points), 1, 3))
     i = 0
@@ -35,6 +27,7 @@ def calc_center(points, rvecs, tvecs):
     return rvec, tvec
 
 def calc_position(rvec_m_c, tm_c):
+    # Calculates the camera coordinates based on the marker coordinates
     points = np.array([[0, 0, 0, 1]]).T
 
     R_m_p = np.array([[1, 0, 0],
@@ -68,11 +61,8 @@ def draw_element(img, id, rvec_m_c, tm_c):
             rvec=rvec_m_c, tvec=tm_c, length=config.marker_length
         )
 
+    # Get the position of the element in camera coordinates
     p = calc_position(rvec_m_c, tm_c)
-
-    # print(f"x: {p[0][0]}, y: {p[0][1]}")
-
-    # Do something with mext to project image
     
     if (id == config.H_ID):
         cv2.circle(img, (p[0][0], p[0][1]), config.radius, (0, 0, 255), -1)
@@ -88,10 +78,13 @@ def draw_element(img, id, rvec_m_c, tm_c):
         cv2.putText(img, "O", (p[0][0] - config.text_offset, p[0][1] + config.text_offset), cv2.FONT_HERSHEY_PLAIN, 3, color=(0,0,0), thickness=2)
 
 def draw_molecule(img, molecule, points, rvecs, tvecs):
+    # Get the center coordinates of the molecule in marker coordinates
     rvec, tvec = calc_center(points, rvecs, tvecs)
 
+    # Get the position of the molecule in camera coordinates
     p = calc_position(rvec, tvec)
 
+    # Draw the molecule
     if (molecule == "H2O"):
         cv2.circle(img, (p[0][0], p[0][1]), config.mol_radius, (127, 0, 255), -1)
         cv2.putText(img, "H2O", (p[0][0] - config.mol_text_offset, p[0][1] + config.text_offset), cv2.FONT_HERSHEY_PLAIN, 3, color=(0,0,0), thickness=2)
@@ -138,6 +131,7 @@ def main():
         print("Cannot read video source")
         sys.exit()
 
+    # If record is True, then initialize video writer.
     if config.record:
         image_height, image_width = img.shape[:2]
         fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
@@ -147,6 +141,7 @@ def main():
     while True:
         got_image, img = video_capture.read()
 
+        # Detect ArUco markers
         corners, ids, _ = cv2.aruco.detectMarkers(
             image=img,
             dictionary=config.arucoDict
@@ -157,12 +152,13 @@ def main():
                 img = cv2.aruco.drawDetectedMarkers(
                 image=img, corners=corners, ids=ids, borderColor=(0, 0, 255))
 
+            # Estimate the poses of all ArUco tags on the screen
             rvecs,tvecs,_ = cv2.aruco.estimatePoseSingleMarkers(
                 corners=corners, markerLength=config.marker_length,
                 cameraMatrix=config.K, distCoeffs=config.dist_coeff
             )
 
-            # Remove un-recognized ids:
+            # Remove any un-recognized ArUco ids:
             end = len(ids)
             i = 0
             while i < end:
@@ -179,11 +175,11 @@ def main():
             if ids.size > 0:
                 squeezed = np.squeeze(tvecs, axis=1)
 
+                # Use DBSCAN to mark ArUco tags that are within dist_threshold as one cluster
                 clusters = DBSCAN(eps=config.dist_threshold, min_samples=1).fit(squeezed)
                 cluster_labels = clusters.labels_
-                num_clusters = max(clusters.labels_) + 1
 
-                # Build the list of molecules
+                # Build the list of molecules based on the clusters from DBSCAN
                 molecules = {}
                 
                 i = 0
@@ -194,10 +190,12 @@ def main():
                     i += 1
 
                 for mol in molecules:
+                    # Add up all the elements in the molecule cluster
                     element_sum = {"H": 0, "C": 0, "N": 0, "O": 0}
                     for element in molecules[mol]:
                         element_sum[config.aruco_id_map[ids[element][0]]] += 1
                     is_molecule = False
+                    # If the molecule cluster matches a molecule in the dictionary, draw the molecule.
                     for m in config.molecules:
                         if config.molecules[m] == element_sum:
                             if config.DEBUG:
@@ -205,15 +203,18 @@ def main():
                             
                             draw_molecule(img, m, molecules[mol], rvecs, tvecs)
                             is_molecule = True
+                    # If the cluster does not match, then draw the individual elements.
                     if not is_molecule:
                         for element in molecules[mol]:
                             draw_element(img, ids[element], rvecs[element], tvecs[element])
 
+        # Write the video to output if record is True
         if config.record:
             img_output = img.copy()
             videoWriter.write(img_output)
         cv2.imshow('Window', img)
 
+        # Quit the program when 'q' is pressed
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
